@@ -1,0 +1,154 @@
+import User from "../Models/UserMod.js";
+import { comparePassword } from "./AuthController.js";
+import Book from "../Models/BookModel.js";
+
+
+export const updateUser = async (req, res, next) => {
+    try {
+        const userId = req.userId;
+        if (!userId) {
+            return res.status(401).json({ message: "user Id not found Login Again" });
+        }
+        const { name, phone } = req.body;
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ msg: "User not found" });
+        }
+
+        if (name) {
+            user.userName = name;
+        }
+
+        if (phone) {
+            user.phoneNo = phone;
+        }
+
+        await user.save();
+
+        return res.status(200).json({
+            status: 'success',
+            message: "User Updated Successfully",
+            name: user.userName,
+            phone: user.phoneNo
+        })
+    } catch (error) {
+        return res.status(500).json({
+            status: 'error',
+            message: "server error" || error
+        })
+    }
+}
+
+export const updateEmail = async (req, res, next) => {
+    try {
+        const userId = req.userId;
+        if (!userId) {
+            return res.status(401).json({ message: "user Id not found Login Again" });
+        }
+        const { currentPassword, newEmail } = req.body;
+
+        if (!currentPassword || !newEmail) {
+            return res.status(400).json({ message: "Current password and new email are required." });
+        }
+
+        const user = await User.findById(userId).select('+password');
+        if (!user) {
+            return res.status(404).json({ msg: "User not found" });
+        }
+
+        const isPasswordCorrect = await comparePassword(currentPassword, user.password);
+        if (!isPasswordCorrect) {
+            return res.status(400).json({ message: "Incorrect password" });
+        }
+        res.clearCookie("user_cred");
+
+        user.email = newEmail;
+        await user.save();
+
+        return res.status(200).json({
+            status: 'success',
+            message: "Email Updated Successfully",
+            email: user.email
+        })
+
+    } catch (error) {
+        return res.status(500).json({
+            status: 'error',
+            message: "server error" || error
+        })
+    }
+}
+
+export const getAllBooks = async (req, res) => {
+    try {
+        const userId = req.userId;
+        if (!userId) {
+            return res.status(401).json({ message: "user Id not found Login Again" });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const books = await Book.find();
+        if (!books) {
+            return res.status(404).json({ message: "No books found" });
+        }
+        return res.status(200).json({
+            status: "success",
+            allbooks: books,
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Server Error", error: error.message });
+    }
+}
+
+export const getBookById = async (req, res) => {
+    try {
+        const userId = req.userId;
+        if (!userId) {
+            return res.status(401).json({ message: "user Id not found Login Again" });
+        }
+        const { bookId } = req.params;
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        const book = await Book.findById(bookId);
+        if (!book) {
+            return res.status(404).json({ message: "Book not found" });
+        }
+        return res.status(200).json({
+            status: "success",
+            book: book,
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Server Error", error: error.message });
+    }
+}
+
+export const getUserProfile = async (req, res) => {
+    try {
+        const userId = req.userId;
+        if (!userId) {
+            return res.status(401).json({ message: "user Id not found Login Again" });
+        }
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        return res.status(200).json({
+            status: "success",
+            user: {
+                id: user._id,
+                name: user.userName,
+                email: user.email,
+                phone: user.phoneNo,
+            },
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Server Error", error: error.message });
+    }
+}
