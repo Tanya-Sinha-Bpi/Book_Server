@@ -10,7 +10,7 @@ dotenv.config()
 const app = express()
 
 
-const allowedOrigins = ["http://localhost:5173" ,"exp://192.168.89.3:8081", "http://localhost:19000",'https://book-server-v7nw.onrender.com'];
+const allowedOrigins = ["http://localhost:7171" ,"exp://192.168.89.3:8081", "http://localhost:19000",'https://book-server-v7nw.onrender.com'];
 
 app.use(
     cors({

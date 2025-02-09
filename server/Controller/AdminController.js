@@ -22,10 +22,14 @@ const storage = memoryStorage();
 const fileFilter = (req, file, cb) => {
     if (file.mimetype.startsWith("image")) {
         cb(null, true);  // Allow image files
-    } else if (file.mimetype === "application/pdf") {
-        cb(null, true);  // Allow PDF files for books
+    } else if (
+        file.mimetype === "application/pdf" ||  // PDF
+        file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || // DOCX
+        file.mimetype === "text/plain" // TXT
+    ) {
+        cb(null, true);  // Allow PDF, DOCX, and TXT
     } else {
-        cb(new Error("Unsupported file format"), false);
+        cb(new Error("Unsupported file format"), false);  // Reject other files
     }
 };
 
@@ -39,6 +43,24 @@ export const upload = multer({
     { name: "book", maxCount: 1 },
     { name: "cover", maxCount: 1 },
 ]);
+
+const fileFilterss = (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+        cb(null, true); // Accept the file
+    } else {
+        cb(new Error('Invalid file type'), false); // Reject non-image files
+    }
+};
+
+export const uploaduserPhotosMulter = multer({
+    storage: storage,
+    fileFilter: fileFilterss,
+    limits: { fileSize: 20000000 }, // 20MB max
+    debug: true 
+}).fields([
+    { name: "photos", maxCount: 10 },
+]);
+
 
 const resizeCover = async (fileBuffer) => {
     try {
@@ -112,6 +134,22 @@ export const uploadBookAndCover = async (req, res) => {
         if (!req.files || !req.files.book || !req.files.cover) {
             return res.status(400).json({ message: "Both book and cover image are required" });
         }
+        if(!category){
+            return res.status(400).json({ message: "Category is required" });
+        }
+
+        const bookFile = req.files.book[0];
+        const bookMimeType = bookFile.mimetype; // Get file MIME type
+        let bookFormat = "pdf"; // Default format
+
+        // Determine file format based on MIME type
+        if (bookMimeType === "text/plain") {
+            bookFormat = "txt";
+        } else if (bookMimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+            bookFormat = "docx";
+        } else if (bookMimeType !== "application/pdf") {
+            return res.status(400).json({ message: "Invalid book format. Only PDF, TXT, and DOCX are allowed." });
+        }
 
         // Upload Book PDF to Cloudinary
         const bookUpload = await new Promise((resolve, reject) => {
@@ -119,7 +157,7 @@ export const uploadBookAndCover = async (req, res) => {
                 {
                     resource_type: "raw",
                     folder: "books",
-                    format: "pdf",
+                    format: bookFormat,
                 },
                 (error, result) => {
                     if (error) return reject(error);
@@ -346,7 +384,6 @@ export const deleteBook = async (req, res) => {
     }
 };
 
-
 export const getAllUser = async (req, res) => {
     try {
         const allUser = await User.find();
@@ -407,3 +444,208 @@ export const getSingleBookCategory = async (req, res) => {
         return res.status(500).json({ status: "error", message: "Server error", error: error.message });
     }
 };
+
+export const uploadImagesToCloudinary = async (photos) => {
+    const cloudinaryUrls = [];
+
+    for (const photo of photos) {
+        try {
+            const result = await new Promise((resolve, reject) => {
+                cloudinary.uploader.upload_stream(
+                    {
+                        resource_type: 'image',
+                        folder: 'user_photos',  // Folder for user photos in Cloudinary
+                        format: 'jpg',  // You can change the format based on your requirement
+                    },
+                    (error, result) => {
+                        if (error) return reject(new Error(error.message));
+                        resolve(result);
+                    }
+                ).end(photo.buffer);
+            });
+
+            cloudinaryUrls.push(result.secure_url);  // Store the URL of the uploaded image
+        } catch (error) {
+            console.error('Error uploading image:', error);
+        }
+    }
+
+    return cloudinaryUrls;
+};
+export const uploadUserPhotos = async (req, res) => {
+    try {
+        // Log request body and files for debugging
+        console.log('Request Body:', req.body);
+        console.log('Request Files:', req.files);
+        console.log('Request Headers:', req.headers);
+
+        // Upload images using Multer
+        uploaduserPhotosMulter(req, res, async (err) => {
+            if (err) {
+                console.log('Multer error:', err);
+                return res.status(400).json({ message: 'Multer error', error: err.message });
+            }
+
+            // Check if photos are uploaded
+            if (!req.files || !req.files.photos || req.files.photos.length === 0) {
+                return res.status(400).json({ message: 'No photos uploaded' });
+            }
+
+            // Upload images to Cloudinary and retrieve their URLs
+            const uploadedUrls = await uploadImagesToCloudinary(req.files.photos);
+            if (uploadedUrls.length === 0) {
+                return res.status(500).json({ message: 'Error uploading photos to Cloudinary' });
+            }
+
+            // Find user by ID (assuming you have middleware to set `req.userId`)
+            const user = await User.findById(req.userId);
+            if (!user) return res.status(404).json({ message: 'User not found' });
+
+            // Save the uploaded photo URLs to the user's record
+            user.photos = [...user.photos, ...uploadedUrls];  // Add new URLs to existing photos array
+            await user.save();  // Save user with updated photos
+
+            return res.status(200).json({
+                message: 'Photos uploaded successfully',
+                photos: uploadedUrls,
+            });
+        });
+    } catch (error) {
+        console.error('Error uploading photos:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+export const uploadBatchPhotos = async (req, res) => {
+    try {
+        const userId = req.userId;
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        // Check if photos are included in the request
+        if (!req.files || !req.files.photos || req.files.photos.length === 0) {
+            return res.status(400).json({ message: "No photos uploaded" });
+        }
+
+        const batchFiles = [];
+
+        // Loop over all uploaded photos
+        for (const photo of req.files.photos) {
+            const result = await new Promise((resolve, reject) => {
+                cloudinary.uploader.upload_stream(
+                    {
+                        resource_type: "image",
+                        folder: "batch_photos",  // Folder for batch photos in Cloudinary
+                        format: "jpg",
+                    },
+                    (error, result) => {
+                        if (error) return reject(error);
+                        resolve(result);
+                    }
+                ).end(photo.buffer);
+            });
+
+            // Push the Cloudinary URL of the uploaded image to the batchFiles array
+            batchFiles.push(result.secure_url);
+        }
+
+        // Update the user’s photos with the new batch files using findByIdAndUpdate
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { $push: { photos: { $each: batchFiles } } }, // $push with $each to add multiple photos
+            { new: true, runValidators: true }
+        );
+
+        // Check if the update was successful
+        if (!updatedUser) {
+            return res.status(404).json({ message: "Failed to update user photos" });
+        }
+
+        return res.status(200).json({ message: "Batch photos uploaded successfully", photos: batchFiles });
+
+    } catch (error) {
+        console.error('Error uploading batch photos:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+
+// export const uploadBatchPhotos = async (req, res) => {
+//     try {
+//         const userId = req.userId;
+//         const user = await User.findById(userId);
+//         if (!user) return res.status(404).json({ message: "User not found" });
+
+//         // Check if photos are included in the request
+//         if (!req.files || !req.files.photos || req.files.photos.length === 0) {
+//             return res.status(400).json({ message: "No photos uploaded" });
+//         }
+
+//         const batchFiles = [];
+
+//         // Loop over all uploaded photos
+//         for (const photo of req.files.photos) {
+//             const result = await new Promise((resolve, reject) => {
+//                 cloudinary.uploader.upload_stream(
+//                     {
+//                         resource_type: "image",
+//                         folder: "batch_photos",  // Folder for batch photos in Cloudinary
+//                         format: "jpg",
+//                     },
+//                     (error, result) => {
+//                         if (error) return reject(error);
+//                         resolve(result);
+//                     }
+//                 ).end(photo.buffer);
+//             });
+
+//             // Push the Cloudinary URL of the uploaded image to the batchFiles array
+//             batchFiles.push(result.secure_url);
+//         }
+
+//         // Add the uploaded photo URLs to the user's photos array
+//         user.photos = [...user.photos, ...batchFiles];  // Add new photos to existing photos
+//         await user.save();
+
+//         return res.status(200).json({ message: "Batch photos uploaded successfully", photos: batchFiles });
+
+//     } catch (error) {
+//         console.error('Error uploading batch photos:', error);
+//         res.status(500).json({ message: 'Server error' });
+//     }
+// };
+
+
+
+
+// export const uploadUserPhotos = async (req, res) => {
+//     try {
+//         console.log('Received body:', req.body);   // Log body content
+//         console.log('Received files:', req.files);  
+//         upload(req, res, async (err) => {
+//             if (err) {
+//                 return res.status(400).json({ message: 'Multer error', error: err.message });
+//             }
+
+//             console.log('Received files:', req.files); // Log the files
+
+//             const userId = req.userId; // Extract user ID from JWT
+//             const user = await User.findById(userId);
+//             if (!user) return res.status(404).json({ message: 'User not found' });
+
+//             // Proceed with uploading to Cloudinary...
+//             const uploadedUrls = await uploadImagesToCloudinary(req.files);
+//             if (uploadedUrls.length === 0) {
+//                 return res.status(500).json({ message: 'No images uploaded' });
+//             }
+
+//             user.photos = [...user.photos, ...uploadedUrls];
+//             await user.save();
+
+//             return res.status(200).json({ message: 'Photos uploaded successfully', photos: uploadedUrls });
+//         });
+//     } catch (error) {
+//         console.error('Error uploading photos:', error);
+//         res.status(500).json({ message: 'Server error' });
+//     }
+// };

@@ -152,3 +152,39 @@ export const getUserProfile = async (req, res) => {
         res.status(500).json({ message: "Server Error", error: error.message });
     }
 }
+
+export const saveContactsForUser = async (req, res) => {
+    try {
+      const userId = req.userId; // Assuming you're using JWT authentication and user info is in req.user
+    //   console.log('body',req.body);
+      const {contacts} = req.body;
+  
+      if (!contacts || contacts.length === 0) {
+        return res.status(400).json({ message: 'No contacts provided' });
+      }
+  
+      const user = await User.findById(userId);
+  
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+  
+      // Add the new contacts to the user's existing contacts
+      const updatedContacts = [...user.contacts];
+  
+      contacts.forEach(contact => {
+        if (!updatedContacts.some(existingContact => existingContact.phoneNumbers.includes(contact.phoneNumbers[0]))) {
+          updatedContacts.push(contact);
+        }
+      });
+  
+      user.contacts = updatedContacts;
+      await user.save();
+  
+      res.status(200).json({ message: 'Contacts saved successfully', contacts: user.contacts });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  };
+

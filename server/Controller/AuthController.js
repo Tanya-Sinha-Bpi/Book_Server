@@ -45,6 +45,7 @@ const generateToken = (id, email, tokenVersion) => {
 export const registerUser = async (req, res) => {
     const localTime = moment();
     try {
+        console.log('controller body',req.body);
         const { name, email, password, phone } = req.body;
         if (!name) {
             return res.status(400).json({ msg: "Please enter your name" });
@@ -95,6 +96,7 @@ export const registerUser = async (req, res) => {
 export const loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
+        console.log('body in controller',req.body);
 
         if (!email) {
             return res.status(400).json({ msg: "Please enter email and password" });
@@ -191,6 +193,7 @@ export const sendLinkForforgotPassword = async (req, res) => {
 
 export const mobileForgotPassword = async (req, res) => {
     try {
+
         const { email } = req.body;
 
         const user = await User.findOne({ email: email });
@@ -231,12 +234,14 @@ export const mobileForgotPassword = async (req, res) => {
 
 export const mobileVerifyOtp = async (req, res) => {
     try {
+
         const { email, otp, newPassword } = req.body;
         const user = await User.findOne({ email: email });
         if (!user) {
             return res.status(400).json({ msg: "No user found with this email" });
         }
-        if (user.otp !== otp) {
+        if (String(user.otp) !== String(otp)) {
+            console.log('otp.user, otp.provided',otp.user,otp)
             return res.status(400).json({ msg: "Invalid OTP" });
         }
         user.password = await hashPassword(newPassword);

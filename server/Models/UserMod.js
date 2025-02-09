@@ -55,10 +55,7 @@ const userSchema = new mongoose.Schema({
         type: Array,
         default: []
     },
-    gallery:{
-        type: Array,
-        default: []
-    }
+    photos: [{ type: String }],
 });
 
 const User = mongoose.model("User", userSchema);
