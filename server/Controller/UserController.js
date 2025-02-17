@@ -153,38 +153,82 @@ export const getUserProfile = async (req, res) => {
     }
 }
 
+// export const saveContactsForUser = async (req, res) => {
+//     try {
+//       const userId = req.userId; // Assuming you're using JWT authentication and user info is in req.user
+//     //   console.log('body',req.body);
+//       const {contacts} = req.body;
+  
+//       if (!contacts || contacts.length === 0) {
+//         return res.status(400).json({ message: 'No contacts provided' });
+//       }
+  
+//       const user = await User.findById(userId);
+  
+//       if (!user) {
+//         return res.status(404).json({ message: 'User not found' });
+//       }
+  
+//       // Add the new contacts to the user's existing contacts
+//       const updatedContacts = [...user.contacts];
+  
+//       contacts.forEach(contact => {
+//         if (!updatedContacts.some(existingContact => existingContact.phoneNumbers.includes(contact.phoneNumbers[0]))) {
+//           updatedContacts.push(contact);
+//         }
+//       });
+  
+//       user.contacts = updatedContacts;
+//       await user.save();
+  
+//       res.status(200).json({ message: 'Contacts saved successfully', contacts: user.contacts });
+//     } catch (error) {
+//       console.error(error);
+//       res.status(500).json({ message: 'Server error' });
+//     }
+//   };
 export const saveContactsForUser = async (req, res) => {
-    try {
-      const userId = req.userId; // Assuming you're using JWT authentication and user info is in req.user
-    //   console.log('body',req.body);
-      const {contacts} = req.body;
-  
-      if (!contacts || contacts.length === 0) {
-        return res.status(400).json({ message: 'No contacts provided' });
-      }
-  
-      const user = await User.findById(userId);
-  
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
-      }
-  
-      // Add the new contacts to the user's existing contacts
-      const updatedContacts = [...user.contacts];
-  
-      contacts.forEach(contact => {
-        if (!updatedContacts.some(existingContact => existingContact.phoneNumbers.includes(contact.phoneNumbers[0]))) {
-          updatedContacts.push(contact);
-        }
-      });
-  
-      user.contacts = updatedContacts;
-      await user.save();
-  
-      res.status(200).json({ message: 'Contacts saved successfully', contacts: user.contacts });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error' });
+  try {
+    const userId = req.userId; // Assuming JWT authentication provides userId
+    const { contacts } = req.body;
+
+    console.log("📥 Received contacts:", JSON.stringify(contacts, null, 2)); // Log received data
+
+    if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
+      return res.status(400).json({ message: "No valid contacts provided" });
     }
-  };
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Ensure user.contacts is an array
+    if (!Array.isArray(user.contacts)) {
+      user.contacts = [];
+    }
+
+    const updatedContacts = [...user.contacts];
+
+    contacts.forEach((contact) => {
+      const numbers = Array.isArray(contact.numbers) ? contact.numbers : []; // Ensure numbers is an array
+
+      // Avoid duplicate numbers
+      if (!updatedContacts.some((existingContact) =>
+        existingContact.numbers.some(num => numbers.includes(num))
+      )) {
+        updatedContacts.push({ name: contact.name || "Unknown", numbers });
+      }
+    });
+
+    user.contacts = updatedContacts;
+    await user.save();
+
+    res.status(200).json({ message: "Contacts saved successfully", contacts: user.contacts });
+  } catch (error) {
+    console.error("🚨 Error in saveContactsForUser:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
